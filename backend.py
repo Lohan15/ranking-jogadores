@@ -2,12 +2,11 @@ import csv
 import sqlite3
 from datetime import datetime
 
-# --- Constantes ---
-ARQUIVO_CSV = 'jogadores.csv'
+# A constante ARQUIVO_CSV não é mais necessária aqui, pois o caminho será dinâmico.
 BANCO_DE_DADOS = 'ranking.db'
 ARQUIVO_LOG_ERROS = 'erros.log'
 
-# --- Classe de Modelo ---
+# --- Classe de Modelo (sem alterações) ---
 class Jogador:
     """Representa um jogador com nome, nível e pontuação."""
     def __init__(self, nome, nivel, pontuacao):
@@ -16,12 +15,10 @@ class Jogador:
         self.pontuacao = float(pontuacao)
 
     def __repr__(self):
-        """Retorna uma representação em string do objeto Jogador."""
         return f"Jogador(Nome={self.nome}, Nível={self.nivel}, Pontuação={self.pontuacao})"
 
-# --- Funções de Banco de Dados ---
+# --- Funções de Banco de Dados (sem alterações) ---
 def criar_banco_de_dados():
-    """Cria o banco de dados SQLite e a tabela de jogadores se não existirem."""
     try:
         with sqlite3.connect(BANCO_DE_DADOS) as conn:
             cursor = conn.cursor()
@@ -39,7 +36,6 @@ def criar_banco_de_dados():
         print(f"Erro ao criar o banco de dados: {e}")
 
 def inserir_jogadores(jogadores, data_importacao):
-    """Insere uma lista de objetos Jogador no banco de dados."""
     try:
         with sqlite3.connect(BANCO_DE_DADOS) as conn:
             cursor = conn.cursor()
@@ -51,24 +47,30 @@ def inserir_jogadores(jogadores, data_importacao):
                 VALUES (?, ?, ?, ?)
             ''', dados_para_inserir)
             conn.commit()
-            print(f"✅ {len(dados_para_inserir)} jogadores importados com sucesso para o banco de dados.")
+            print(f"✅ {len(dados_para_inserir)} jogadores inseridos no banco de dados.")
     except sqlite3.Error as e:
         print(f"Erro ao inserir dados no banco: {e}")
 
-# --- Funções de Lógica de Negócio ---
-def processar_csv():
-    """Lê o arquivo CSV, processa os jogadores e os insere no banco."""
+# --- Funções de Lógica de Negócio (COM ALTERAÇÕES) ---
+def processar_csv(caminho_do_arquivo):
+    """
+    Lê um arquivo CSV do caminho especificado, processa os jogadores e os insere no banco.
+    Retorna o número de jogadores válidos que foram importados.
+    """
     jogadores_validos = []
     data_importacao = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     try:
-        with open(ARQUIVO_CSV, mode='r', encoding='utf-8') as arquivo_csv, \
+        with open(caminho_do_arquivo, mode='r', encoding='utf-8') as arquivo_csv, \
              open(ARQUIVO_LOG_ERROS, mode='a', encoding='utf-8') as arquivo_log:
             
             leitor_csv = csv.reader(arquivo_csv)
-            next(leitor_csv)  # Pular cabeçalho
+            try:
+                next(leitor_csv)  # Pular cabeçalho
+            except StopIteration:
+                return 0 # Arquivo vazio
 
-            print(f"Iniciando processamento do arquivo '{ARQUIVO_CSV}'...")
+            print(f"Iniciando processamento do arquivo '{caminho_do_arquivo}'...")
             for i, linha in enumerate(leitor_csv, start=2):
                 try:
                     if len(linha) != 3:
@@ -79,20 +81,27 @@ def processar_csv():
                     
                     jogadores_validos.append(Jogador(nome, int(nivel_str), float(pontuacao_str)))
                 except (ValueError, IndexError) as e:
-                    log_msg = f"{data_importacao} - Erro na linha {i}: {linha} -> {e}\n"
+                    log_msg = f"{data_importacao} - Erro na linha {i} do arquivo '{caminho_do_arquivo}': {linha} -> {e}\n"
                     print(f"⚠️  Erro na linha {i} do CSV. Verifique 'erros.log' para detalhes.")
                     arquivo_log.write(log_msg)
         
         if jogadores_validos:
             inserir_jogadores(jogadores_validos, data_importacao)
+            return len(jogadores_validos)
         else:
             print("Nenhum jogador válido encontrado no CSV para importar.")
+            return 0
 
     except FileNotFoundError:
-        print(f"ERRO CRÍTICO: O arquivo '{ARQUIVO_CSV}' não foi encontrado.")
+        print(f"ERRO CRÍTICO: O arquivo '{caminho_do_arquivo}' não foi encontrado.")
+        return -1 # Retorna -1 para indicar erro de arquivo não encontrado
+    except Exception as e:
+        print(f"Ocorreu um erro inesperado ao processar o arquivo: {e}")
+        return -1
 
+
+# --- Funções de Consulta (sem alterações) ---
 def obter_listas_de_ranking():
-    """Consulta o banco para obter as datas de importação únicas (listas)."""
     try:
         with sqlite3.connect(BANCO_DE_DADOS) as conn:
             cursor = conn.cursor()
@@ -103,7 +112,6 @@ def obter_listas_de_ranking():
         return []
 
 def carregar_ranking_por_data(data_escolhida):
-    """Carrega os jogadores de uma importação específica, ordenados por pontuação."""
     try:
         with sqlite3.connect(BANCO_DE_DADOS) as conn:
             cursor = conn.cursor()
