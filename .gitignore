@@ -9,9 +9,101 @@ def main(page: ft.Page):
     page.window_width = 800
     page.window_height = 600
 
+    # --- Funções de Atualização da UI ---
+
+    def atualizar_dropdown_rankings():
+        """Busca os rankings no BD e atualiza o componente Dropdown."""
+        listas_disponiveis = backend.obter_listas_de_ranking()
+        dropdown_listas.options.clear()
+        for data in listas_disponiveis:
+            dropdown_listas.options.append(ft.dropdown.Option(data))
+        page.update()
+
+    def exibir_ranking_selecionado(e):
+        """Callback acionado quando o usuário seleciona uma data no Dropdown."""
+        tabela_ranking.rows.clear()
+        page.update()
+
+        data_selecionada = dropdown_listas.value
+        if not data_selecionada:
+            return
+
+        ranking = backend.carregar_ranking_por_data(data_selecionada)
+        
+        icones = [
+            ft.Icon(name=ft.Icons.EMOJI_EVENTS, color=ft.Colors.AMBER),
+            ft.Icon(name=ft.Icons.EMOJI_EVENTS, color=ft.Colors.BLUE_GREY_200),
+            ft.Icon(name=ft.Icons.EMOJI_EVENTS, color=ft.Colors.BROWN_400),
+        ]
+
+        for i, jogador in enumerate(ranking):
+            posicao_cell = ft.DataCell(
+                ft.Row([
+                    icones[i] if i < 3 else ft.Container(width=24),
+                    ft.Text(f"{i+1}º")
+                ])
+            )
+            tabela_ranking.rows.append(
+                ft.DataRow(
+                    cells=[
+                        posicao_cell,
+                        ft.DataCell(ft.Text(jogador.nome)),
+                        ft.DataCell(ft.Text(str(jogador.nivel))),
+                        ft.DataCell(ft.Text(f"{jogador.pontuacao:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))),
+                    ]
+                )
+            )
+        page.update()
+
+    # --- Funções de Evento para o FilePicker ---
+
+    def resultado_do_picker(e: ft.FilePickerResultEvent):
+        """Callback acionado após o usuário selecionar um arquivo."""
+        if e.files:
+            caminho_arquivo = e.files[0].path
+            jogadores_importados = backend.processar_csv(caminho_arquivo)
+            
+            if jogadores_importados > 0:
+                msg = f"{jogadores_importados} jogadores importados com sucesso!"
+                cor_fundo = ft.Colors.GREEN_700
+            elif jogadores_importados == 0:
+                msg = "Nenhum jogador válido encontrado no arquivo selecionado."
+                cor_fundo = ft.Colors.AMBER_800
+            else:
+                msg = "Erro ao abrir ou processar o arquivo."
+                cor_fundo = ft.Colors.RED_800
+
+            page.snack_bar = ft.SnackBar(ft.Text(msg), bgcolor=cor_fundo)
+            page.snack_bar.open = True
+            
+            atualizar_dropdown_rankings()
+        else:
+            page.snack_bar = ft.SnackBar(ft.Text("Operação cancelada."))
+            page.snack_bar.open = True
+            page.update()
+
     # --- Componentes da Interface ---
 
-    # Tabela para exibir os dados do ranking
+    file_picker = ft.FilePicker(on_result=resultado_do_picker)
+    page.overlay.append(file_picker)
+
+    # Botão que aciona o FilePicker (CORREÇÃO APLICADA AQUI)
+    botao_importar = ft.ElevatedButton(
+        "Importar CSV",
+        icon=ft.Icons.UPLOAD_FILE,  # Era ft.icons.UPLOAD_FILE
+        on_click=lambda _: file_picker.pick_files(
+            allow_multiple=False,
+            allowed_extensions=["csv"]
+        )
+    )
+
+    dropdown_listas = ft.Dropdown(
+        label="Selecione a Data do Ranking",
+        options=[],
+        on_change=exibir_ranking_selecionado,
+        width=300,
+    )
+
     tabela_ranking = ft.DataTable(
         columns=[
             ft.DataColumn(ft.Text("Pos.", weight=ft.FontWeight.BOLD)),
@@ -24,66 +116,10 @@ def main(page: ft.Page):
         data_row_min_height=40,
     )
 
-    # --- Funções de Evento (Callbacks) ---
-
-    def exibir_ranking_selecionado(e):
-        """Callback acionado quando o usuário seleciona uma data no Dropdown."""
-        data_selecionada = dropdown_listas.value
-        if not data_selecionada:
-            return
-
-        # 1. Carrega os dados usando a função do backend
-        ranking = backend.carregar_ranking_por_data(data_selecionada)
-
-        # 2. Limpa as linhas existentes da tabela
-        tabela_ranking.rows.clear()
-        
-        # 3. Ícones para o TOP 3 (CORREÇÃO APLICADA AQUI)
-        icones = [
-            ft.Icon(name=ft.Icons.EMOJI_EVENTS, color=ft.Colors.AMBER),
-            ft.Icon(name=ft.Icons.EMOJI_EVENTS, color=ft.Colors.BLUE_GREY_200),
-            ft.Icon(name=ft.Icons.EMOJI_EVENTS, color=ft.Colors.BROWN_400),
-        ]
-
-        # 4. Popula a tabela com os novos dados
-        for i, jogador in enumerate(ranking):
-            posicao_cell = ft.DataCell(
-                ft.Row([
-                    icones[i] if i < 3 else ft.Container(width=24), # Adiciona ícone ou espaço
-                    ft.Text(f"{i+1}º")
-                ])
-            )
-            
-            tabela_ranking.rows.append(
-                ft.DataRow(
-                    cells=[
-                        posicao_cell,
-                        ft.DataCell(ft.Text(jogador.nome)),
-                        ft.DataCell(ft.Text(str(jogador.nivel))),
-                        ft.DataCell(ft.Text(f"{jogador.pontuacao:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))), # Formatação BR
-                    ]
-                )
-            )
-        
-        page.update()
-
     # --- Lógica de Inicialização ---
     
-    # 1. Processa o CSV e popula o BD ao iniciar a aplicação
     backend.criar_banco_de_dados()
-    backend.processar_csv()
-    
-    # 2. Obtém as listas de ranking do backend
-    listas_disponiveis = backend.obter_listas_de_ranking()
-    opcoes_dropdown = [ft.dropdown.Option(data) for data in listas_disponiveis]
-
-    # 3. Cria o Dropdown com as listas
-    dropdown_listas = ft.Dropdown(
-        label="Selecione a Data do Ranking",
-        options=opcoes_dropdown,
-        on_change=exibir_ranking_selecionado,
-        width=300,
-    )
+    atualizar_dropdown_rankings()
 
     # --- Montagem da Página ---
     
@@ -92,9 +128,9 @@ def main(page: ft.Page):
             [
                 ft.Text("🏆 Ranking de Jogadores 🏆", size=32, weight=ft.FontWeight.BOLD, text_align=ft.TextAlign.CENTER),
                 ft.Divider(),
-                dropdown_listas,
+                ft.Row([botao_importar, dropdown_listas], alignment=ft.MainAxisAlignment.CENTER, spacing=20),
                 ft.Container(height=20),
-                ft.Column([tabela_ranking], scroll=ft.ScrollMode.AUTO, expand=True) # Coluna rolável
+                ft.Column([tabela_ranking], scroll=ft.ScrollMode.ALWAYS, expand=True)
             ],
             alignment=ft.MainAxisAlignment.START,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
